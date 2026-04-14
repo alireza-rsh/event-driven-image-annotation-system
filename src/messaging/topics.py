@@ -1,0 +1,17 @@
+IMAGE_SUBMITTED = "image.submitted"
+INFERENCE_COMPLETED = "inference.completed"
+ANNOTATION_STORED = "annotation.stored"
+ANNOTATION_CORRECTED = "annotation.corrected"
+EMBEDDING_CREATED = "embedding.created"
+QUERY_SUBMITTED = "query.submitted"
+QUERY_COMPLETED = "query.completed"
+
+ALL_TOPICS = {
+    IMAGE_SUBMITTED,
+    INFERENCE_COMPLETED,
+    ANNOTATION_STORED,
+    ANNOTATION_CORRECTED,
+    EMBEDDING_CREATED,
+    QUERY_SUBMITTED,
+    QUERY_COMPLETED,
+}
