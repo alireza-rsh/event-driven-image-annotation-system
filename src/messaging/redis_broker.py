@@ -1,24 +1,41 @@
 import json
+import threading
 from typing import Callable
 
 import redis
 
-from messaging.broker_interface import BrokerInterface
+from messaging.events import validate_event_dict
 
 
-class RedisBroker(BrokerInterface):
-    def __init__(self, host: str = "localhost", port: int = 6379, db: int = 0):
-        self.redis_client = redis.Redis(host=host, port=port, db=db, decode_responses=True)
+class RedisBroker:
+    def __init__(self, redis_url: str = "redis://localhost:6379/0"):
+        self.redis_url = redis_url
+        self.client = redis.Redis.from_url(self.redis_url, decode_responses=True)
+        self.threads: list[threading.Thread] = []
 
     def publish(self, topic: str, event: dict) -> None:
-        self.redis_client.publish(topic, json.dumps(event))
+        validate_event_dict(event)
+        self.client.publish(topic, json.dumps(event))
 
     def subscribe(self, topic: str, handler: Callable[[dict], None]) -> None:
-        pubsub = self.redis_client.pubsub()
+        pubsub = self.client.pubsub()
         pubsub.subscribe(topic)
 
-        for message in pubsub.listen():
-            if message["type"] != "message":
-                continue
-            event = json.loads(message["data"])
-            handler(event)
+        def listen():
+            for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+
+                try:
+                    event = json.loads(message["data"])
+                    validate_event_dict(event)
+                    handler(event)
+                except Exception as exc:
+                    print(f"[RedisBroker] Failed to handle message on {topic}: {exc}")
+
+        thread = threading.Thread(target=listen, daemon=True)
+        thread.start()
+        self.threads.append(thread)
+
+    def ping(self) -> bool:
+        return self.client.ping()
