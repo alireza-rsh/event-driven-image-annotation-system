@@ -23,6 +23,7 @@ class QueryService:
                     {"image_id": "img_002", "score": 0.91},
                     {"image_id": "img_003", "score": 0.88},
                 ][:top_k]
+
             else:
                 if query_type == "text":
                     query_text = payload.get("query_text")

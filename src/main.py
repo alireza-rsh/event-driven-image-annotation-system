@@ -35,15 +35,6 @@ def start_mock_services(broker):
 
 
 def start_real_services(broker, pipeline):
-    """
-    In real mode, the pipeline handles:
-    - detection
-    - box creation
-    - embeddings
-    - FAISS indexing/search
-
-    So we only start the services that actually use it.
-    """
     services = [
         InferenceService(broker, pipeline=pipeline),
         QueryService(broker, pipeline=pipeline),
@@ -81,9 +72,6 @@ def run_demo():
 
 
 def run_interactive():
-    """
-    Current mock interactive mode.
-    """
     broker = RedisBroker()
     broker.ping()
 
@@ -102,30 +90,25 @@ def run_interactive():
 
         if choice == "1":
             path = input("Image path: ").strip()
-
             if not path:
                 print("Image path cannot be empty.")
                 continue
 
             image_id = f"img_{uuid4().hex[:8]}"
-
             cli.submit_image(
                 image_id=image_id,
                 path=path,
                 source="user",
             )
-
             print(f"Published image.submitted for image_id={image_id}")
 
         elif choice == "2":
             query_text = input("Query text: ").strip()
-
             if not query_text:
                 print("Query text cannot be empty.")
                 continue
 
             top_k_input = input("Top K [default=3]: ").strip()
-
             try:
                 top_k = int(top_k_input) if top_k_input else 3
             except ValueError:
@@ -133,14 +116,12 @@ def run_interactive():
                 continue
 
             query_id = f"qry_{uuid4().hex[:8]}"
-
             cli.submit_query(
                 query_id=query_id,
                 query_type="text",
                 query_text=query_text,
                 top_k=top_k,
             )
-
             print(f"Published query.submitted for query_id={query_id}")
 
         elif choice == "3":
@@ -150,17 +131,8 @@ def run_interactive():
         else:
             print("Invalid option. Choose 1, 2, or 3.")
 
-        time.sleep(1)
-
 
 def run_real():
-    """
-    Real mode:
-    - upload real images
-    - detect real objects
-    - create real embeddings
-    - search with FAISS
-    """
     broker = RedisBroker()
     broker.ping()
 
@@ -174,20 +146,19 @@ def run_real():
     print("1. Upload image and index it")
     print("2. Search by text")
     print("3. Search by image")
-    print("4. Exit")
+    print("4. Show stats")
+    print("5. Exit")
 
     while True:
         choice = input("\nChoose an option: ").strip()
 
         if choice == "1":
             path = input("Image path: ").strip()
-
             if not path:
                 print("Image path cannot be empty.")
                 continue
 
             image_id = f"img_{uuid4().hex[:8]}"
-
             try:
                 cli.submit_image(
                     image_id=image_id,
@@ -195,18 +166,17 @@ def run_real():
                     source="user",
                 )
                 print(f"Published image.submitted for image_id={image_id}")
+                print("Indexing started in background. Wait for the [READY] message.")
             except Exception as exc:
                 print(f"Upload/indexing failed: {exc}")
 
         elif choice == "2":
             query_text = input("What do you want to find? ").strip()
-
             if not query_text:
                 print("Query text cannot be empty.")
                 continue
 
             top_k_input = input("Top K [default=3]: ").strip()
-
             try:
                 top_k = int(top_k_input) if top_k_input else 3
             except ValueError:
@@ -214,7 +184,6 @@ def run_real():
                 continue
 
             query_id = f"qry_{uuid4().hex[:8]}"
-
             try:
                 cli.submit_query(
                     query_id=query_id,
@@ -228,13 +197,11 @@ def run_real():
 
         elif choice == "3":
             query_image_path = input("Query image path: ").strip()
-
             if not query_image_path:
                 print("Query image path cannot be empty.")
                 continue
 
             top_k_input = input("Top K [default=3]: ").strip()
-
             try:
                 top_k = int(top_k_input) if top_k_input else 3
             except ValueError:
@@ -242,7 +209,6 @@ def run_real():
                 continue
 
             query_id = f"qry_{uuid4().hex[:8]}"
-
             try:
                 cli.submit_query(
                     query_id=query_id,
@@ -255,13 +221,14 @@ def run_real():
                 print(f"Image search failed: {exc}")
 
         elif choice == "4":
+            print(pipeline.stats())
+
+        elif choice == "5":
             print("Exiting.")
             break
 
         else:
-            print("Invalid option. Choose 1, 2, 3, or 4.")
-
-        time.sleep(1)
+            print("Invalid option. Choose 1, 2, 3, 4, or 5.")
 
 
 def main():

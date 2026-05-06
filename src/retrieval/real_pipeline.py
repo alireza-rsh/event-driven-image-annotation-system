@@ -42,20 +42,9 @@ class ClipEmbedder:
     def encode_image(self, image: Image.Image) -> np.ndarray:
         inputs = self.processor(images=image, return_tensors="pt").to(self.device)
 
-        # First try the standard CLIP API
-        try:
-            features = self.model.get_image_features(**inputs)
-        except Exception:
-            # Fallback for API/version differences
-            outputs = self.model.vision_model(pixel_values=inputs["pixel_values"])
-            pooled = outputs.pooler_output
-            features = self.model.visual_projection(pooled)
-
-        # If a model output object is returned instead of a tensor
-        if hasattr(features, "image_embeds") and features.image_embeds is not None:
-            features = features.image_embeds
-        elif hasattr(features, "pooler_output") and features.pooler_output is not None:
-            features = self.model.visual_projection(features.pooler_output)
+        outputs = self.model.vision_model(pixel_values=inputs["pixel_values"])
+        pooled = outputs.pooler_output
+        features = self.model.visual_projection(pooled)
 
         vector = features.detach().cpu().numpy().astype("float32")
         faiss.normalize_L2(vector)
@@ -65,23 +54,12 @@ class ClipEmbedder:
     def encode_text(self, text: str) -> np.ndarray:
         inputs = self.processor(text=[text], return_tensors="pt", padding=True).to(self.device)
 
-        # First try the standard CLIP API
-        try:
-            features = self.model.get_text_features(**inputs)
-        except Exception:
-            # Fallback for API/version differences
-            outputs = self.model.text_model(
-                input_ids=inputs["input_ids"],
-                attention_mask=inputs.get("attention_mask"),
-            )
-            pooled = outputs.pooler_output
-            features = self.model.text_projection(pooled)
-
-        # If a model output object is returned instead of a tensor
-        if hasattr(features, "text_embeds") and features.text_embeds is not None:
-            features = features.text_embeds
-        elif hasattr(features, "pooler_output") and features.pooler_output is not None:
-            features = self.model.text_projection(features.pooler_output)
+        outputs = self.model.text_model(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs.get("attention_mask"),
+        )
+        pooled = outputs.pooler_output
+        features = self.model.text_projection(pooled)
 
         vector = features.detach().cpu().numpy().astype("float32")
         faiss.normalize_L2(vector)
