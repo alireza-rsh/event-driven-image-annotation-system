@@ -1,70 +1,64 @@
-import hashlib
-import json
-import math
-
 from messaging.events import make_event
 from messaging.topics import QUERY_SUBMITTED, QUERY_COMPLETED
 
 
 class QueryService:
-    def __init__(self, broker):
+    def __init__(self, broker, pipeline=None):
         self.broker = broker
-        self.redis = broker.client
-        self.vector_key = "vectors"
+        self.pipeline = pipeline
 
     def start(self):
         self.broker.subscribe(QUERY_SUBMITTED, self.handle_query_submitted)
 
-    def handle_query_submitted(self, event: dict):
+    def handle_query_submitted(self, event):
         payload = event["payload"]
-
         query_id = payload["query_id"]
-        query_text = payload["query_text"]
-        top_k = payload.get("top_k", 3)
+        query_type = payload["query_type"]
+        top_k = payload["top_k"]
 
-        query_embedding = self.create_embedding(query_text)
+        try:
+            if self.pipeline is None:
+                results = [
+                    {"image_id": "img_001", "score": 0.96},
+                    {"image_id": "img_002", "score": 0.91},
+                    {"image_id": "img_003", "score": 0.88},
+                ][:top_k]
+            else:
+                if query_type == "text":
+                    query_text = payload.get("query_text")
+                    if not query_text:
+                        raise ValueError("query_text is required for text query")
+                    results = self.pipeline.search_by_text(query_text, k=top_k)
 
-        results = []
-        all_vectors = self.redis.hgetall(self.vector_key)
+                elif query_type == "image":
+                    query_image_path = payload.get("query_image_path")
+                    if not query_image_path:
+                        raise ValueError("query_image_path is required for image query")
+                    results = self.pipeline.search_by_image(query_image_path, k=top_k)
 
-        for image_id, raw_record in all_vectors.items():
-            record = json.loads(raw_record)
-            score = self.cosine_similarity(query_embedding, record["embedding"])
+                else:
+                    raise ValueError(f"Unsupported query_type: {query_type}")
 
-            results.append(
-                {
-                    "image_id": image_id,
-                    "labels": record["labels"],
-                    "score": score,
-                }
+            completed_event = make_event(
+                topic=QUERY_COMPLETED,
+                producer="query_service",
+                payload={
+                    "query_id": query_id,
+                    "status": "success",
+                    "results": results,
+                },
             )
 
-        results.sort(key=lambda item: item["score"], reverse=True)
-        results = results[:top_k]
+        except Exception as exc:
+            completed_event = make_event(
+                topic=QUERY_COMPLETED,
+                producer="query_service",
+                payload={
+                    "query_id": query_id,
+                    "status": "failed",
+                    "error": str(exc),
+                    "results": [],
+                },
+            )
 
-        output_event = make_event(
-            topic=QUERY_COMPLETED,
-            producer="query_service",
-            event_id=f"evt_{query_id}_completed",
-            payload={
-                "query_id": query_id,
-                "query_text": query_text,
-                "results": results,
-            },
-        ).to_dict()
-
-        self.broker.publish(QUERY_COMPLETED, output_event)
-
-    def create_embedding(self, text: str, size: int = 8) -> list[float]:
-        digest = hashlib.sha256(text.encode("utf-8")).digest()
-        return [digest[i] / 255.0 for i in range(size)]
-
-    def cosine_similarity(self, left: list[float], right: list[float]) -> float:
-        dot = sum(a * b for a, b in zip(left, right))
-        left_norm = math.sqrt(sum(a * a for a in left))
-        right_norm = math.sqrt(sum(b * b for b in right))
-
-        if left_norm == 0 or right_norm == 0:
-            return 0.0
-
-        return dot / (left_norm * right_norm)
+        self.broker.publish(completed_event.topic, completed_event.to_dict())

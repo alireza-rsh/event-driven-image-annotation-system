@@ -3,57 +3,57 @@ from messaging.topics import IMAGE_SUBMITTED, INFERENCE_COMPLETED
 
 
 class InferenceService:
-    def __init__(self, broker):
+    def __init__(self, broker, pipeline=None):
         self.broker = broker
-        self.processed_event_ids = set()
+        self.pipeline = pipeline
 
     def start(self):
         self.broker.subscribe(IMAGE_SUBMITTED, self.handle_image_submitted)
 
-    def handle_image_submitted(self, event: dict):
-        if event["event_id"] in self.processed_event_ids:
-            return
+    def handle_image_submitted(self, event):
+        image_id = event["payload"]["image_id"]
+        image_path = event["payload"]["path"]
 
-        self.processed_event_ids.add(event["event_id"])
+        try:
+            if self.pipeline is None:
+                objects = [
+                    {
+                        "object_id": "obj_001",
+                        "label": "car",
+                        "bbox": [12, 44, 188, 200],
+                        "confidence": 0.93,
+                    }
+                ]
+                annotated_path = None
+            else:
+                result = self.pipeline.index_image(image_path, image_id=image_id)
+                objects = result["detections"]
+                annotated_path = result["annotated_path"]
 
-        payload = event["payload"]
-        image_id = payload["image_id"]
-        path = payload["path"]
+            result_event = make_event(
+                topic=INFERENCE_COMPLETED,
+                producer="inference_service",
+                payload={
+                    "image_id": image_id,
+                    "image_path": image_path,
+                    "annotated_path": annotated_path,
+                    "objects": objects,
+                    "status": "success",
+                },
+            )
 
-        objects = self.simulate_inference(path)
+        except Exception as exc:
+            result_event = make_event(
+                topic=INFERENCE_COMPLETED,
+                producer="inference_service",
+                payload={
+                    "image_id": image_id,
+                    "image_path": image_path,
+                    "annotated_path": None,
+                    "objects": [],
+                    "status": "failed",
+                    "error": str(exc),
+                },
+            )
 
-        output_event = make_event(
-            topic=INFERENCE_COMPLETED,
-            producer="inference_service",
-            event_id=f"evt_{image_id}_inference_completed",
-            payload={
-                "image_id": image_id,
-                "path": path,
-                "objects": objects,
-                "model_version": "simulated-v1",
-            },
-        ).to_dict()
-
-        self.broker.publish(INFERENCE_COMPLETED, output_event)
-
-    def simulate_inference(self, path: str) -> list[dict]:
-        lower_path = path.lower()
-
-        if "car" in lower_path:
-            label = "car"
-        elif "person" in lower_path:
-            label = "person"
-        elif "bike" in lower_path:
-            label = "bike"
-        elif "bus" in lower_path:
-            label = "bus"
-        else:
-            label = "object"
-
-        return [
-            {
-                "label": label,
-                "bbox": [10, 20, 100, 160],
-                "confidence": 0.91,
-            }
-        ]
+        self.broker.publish(result_event.topic, result_event.to_dict())
