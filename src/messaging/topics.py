@@ -5,6 +5,7 @@ ANNOTATION_CORRECTED = "annotation.corrected"
 EMBEDDING_CREATED = "embedding.created"
 QUERY_SUBMITTED = "query.submitted"
 QUERY_COMPLETED = "query.completed"
+IMAGE_INDEXED = "image.indexed"
 
 ALL_TOPICS = {
     IMAGE_SUBMITTED,
@@ -14,4 +15,5 @@ ALL_TOPICS = {
     EMBEDDING_CREATED,
     QUERY_SUBMITTED,
     QUERY_COMPLETED,
+    IMAGE_INDEXED,
 }
