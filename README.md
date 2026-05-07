@@ -345,12 +345,3 @@ At a high level, the test suite checks four things:
 
 4. **Correct robustness behavior**  
    The system handles invalid inputs, failures, and asynchronous timing issues without collapsing.
-
----
-
-## Notes
-
-- **YOLO** performs annotation and box drawing.
-- **FAISS** performs retrieval, not annotation.
-- **MongoDB** stores documents, not vectors.
-- The system is eventually consistent by design, so an uploaded image becomes searchable only after indexing finishes and the ready event is published.
