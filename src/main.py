@@ -11,6 +11,7 @@ from services.document_db_service import DocumentDBService
 from services.embedding_service import EmbeddingService
 from services.inference_service import InferenceService
 from services.query_service import QueryService
+from storage.mongo_document_store import MongoDocumentStore
 
 
 def _start_in_thread(service):
@@ -22,7 +23,7 @@ def _start_in_thread(service):
 def start_mock_services(broker):
     services = [
         InferenceService(broker),
-        DocumentDBService(broker),
+        DocumentDBService(broker, store=MongoDocumentStore()),
         EmbeddingService(broker),
         QueryService(broker),
     ]
@@ -34,9 +35,10 @@ def start_mock_services(broker):
     return services, threads
 
 
-def start_real_services(broker, pipeline):
+def start_real_services(broker, pipeline, store):
     services = [
         InferenceService(broker, pipeline=pipeline),
+        DocumentDBService(broker, store=store),
         QueryService(broker, pipeline=pipeline),
     ]
 
@@ -51,7 +53,8 @@ def run_demo():
     broker = RedisBroker()
     broker.ping()
 
-    start_mock_services(broker)
+    store = MongoDocumentStore()
+    start_real_services(broker, pipeline=None, store=store)
 
     cli = CLIService(broker)
     cli.start()
@@ -75,7 +78,8 @@ def run_interactive():
     broker = RedisBroker()
     broker.ping()
 
-    start_mock_services(broker)
+    store = MongoDocumentStore()
+    start_real_services(broker, pipeline=None, store=store)
 
     cli = CLIService(broker)
     cli.start()
@@ -83,7 +87,8 @@ def run_interactive():
     print("Mock system started.")
     print("1. Upload image")
     print("2. Submit text query")
-    print("3. Exit")
+    print("3. Show document DB stats")
+    print("4. Exit")
 
     while True:
         choice = input("\nChoose an option: ").strip()
@@ -125,11 +130,14 @@ def run_interactive():
             print(f"Published query.submitted for query_id={query_id}")
 
         elif choice == "3":
+            print("MongoDB stats:", store.stats())
+
+        elif choice == "4":
             print("Exiting.")
             break
 
         else:
-            print("Invalid option. Choose 1, 2, or 3.")
+            print("Invalid option. Choose 1, 2, 3, or 4.")
 
 
 def run_real():
@@ -137,7 +145,9 @@ def run_real():
     broker.ping()
 
     pipeline = RealImageRetrievalSystem()
-    start_real_services(broker, pipeline)
+    store = MongoDocumentStore()
+
+    start_real_services(broker, pipeline, store)
 
     cli = CLIService(broker)
     cli.start()
@@ -146,8 +156,9 @@ def run_real():
     print("1. Upload image and index it")
     print("2. Search by text")
     print("3. Search by image")
-    print("4. Show stats")
-    print("5. Exit")
+    print("4. Show FAISS stats")
+    print("5. Show document DB stats")
+    print("6. Exit")
 
     while True:
         choice = input("\nChoose an option: ").strip()
@@ -221,14 +232,17 @@ def run_real():
                 print(f"Image search failed: {exc}")
 
         elif choice == "4":
-            print(pipeline.stats())
+            print("FAISS stats:", pipeline.stats())
 
         elif choice == "5":
+            print("MongoDB stats:", store.stats())
+
+        elif choice == "6":
             print("Exiting.")
             break
 
         else:
-            print("Invalid option. Choose 1, 2, 3, 4, or 5.")
+            print("Invalid option. Choose 1, 2, 3, 4, 5, or 6.")
 
 
 def main():

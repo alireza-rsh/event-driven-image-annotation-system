@@ -1,61 +1,57 @@
-import json
-
-from messaging.events import make_event
+from messaging.events import make_event, generate_timestamp
 from messaging.topics import INFERENCE_COMPLETED, ANNOTATION_STORED
 
 
 class DocumentDBService:
-    def __init__(self, broker):
+    def __init__(self, broker, store):
         self.broker = broker
-        self.redis = broker.client
-        self.document_key = "documents"
+        self.store = store
 
-    def start(self):
+    def start(self) -> None:
         self.broker.subscribe(INFERENCE_COMPLETED, self.handle_inference_completed)
 
-    def handle_inference_completed(self, event: dict):
+    def handle_inference_completed(self, event: dict) -> None:
         payload = event["payload"]
-        image_id = payload["image_id"]
 
-        if self.redis.hexists(self.document_key, image_id):
-            return
+        image_id = payload["image_id"]
+        image_path = payload["image_path"]
+        annotated_path = payload.get("annotated_path")
+        objects = payload.get("objects", [])
+        status = payload.get("status", "unknown")
+        error = payload.get("error")
+
+        now = generate_timestamp()
 
         document = {
             "image_id": image_id,
-            "path": payload["path"],
-            "objects": payload["objects"],
-            "model_version": payload["model_version"],
+            "image_path": image_path,
+            "annotated_path": annotated_path,
+            "status": status,
+            "objects": objects,
+            "object_count": len(objects),
+            "error": error,
+            "created_at": now,
+            "updated_at": now,
             "history": [
-                {
-                    "status": INFERENCE_COMPLETED,
-                    "event_id": event["event_id"],
-                    "timestamp": event["timestamp"],
-                    "producer": event["producer"],
-                }
+                "image.submitted",
+                "inference.completed",
             ],
-            "review": {
-                "status": "not_reviewed",
-                "notes": [],
-            },
         }
 
-        self.redis.hset(self.document_key, image_id, json.dumps(document))
+        self.store.upsert_image_document(document)
 
-        output_event = make_event(
+        if status != "success":
+            return
+
+        stored_event = make_event(
             topic=ANNOTATION_STORED,
             producer="document_db_service",
-            event_id=f"evt_{image_id}_annotation_stored",
             payload={
                 "image_id": image_id,
                 "document_id": image_id,
-                "objects": payload["objects"],
+                "stored_at": now,
+                "object_count": len(objects),
             },
-        ).to_dict()
+        )
 
-        self.broker.publish(ANNOTATION_STORED, output_event)
-    
-    def get_document(self, image_id: str) -> dict | None:
-        raw = self.redis.hget(self.document_key, image_id)
-        if raw is None:
-            return None
-        return json.loads(raw)
+        self.broker.publish(stored_event.topic, stored_event.to_dict())
